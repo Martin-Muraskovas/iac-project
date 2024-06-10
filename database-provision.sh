@@ -2,4 +2,6 @@
 
 # Update and Upgrade
 
-# 
+# Install mongodb
+
+# Enable mongodb
