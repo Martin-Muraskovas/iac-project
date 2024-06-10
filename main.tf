@@ -115,7 +115,7 @@ resource "aws_launch_template" "app-launch-template" {
   image_id      = "ami-011e54f70c1c91e17"
   instance_type = "t2.micro"
   key_name      = "martin-key"
-  security_group_names = [aws_security_group.app_sg.name]
+  vpc_security_group_ids = [aws_security_group.app_sg.id]
 
   block_device_mappings {
     device_name = "/dev/sda1"
@@ -165,6 +165,8 @@ resource "aws_instance" "database-vm" {
   }
 }
 
+
+
 # S3 backend configuration
 terraform {
   backend "s3" {
@@ -174,3 +176,4 @@ terraform {
   }
 }
 
+# userdata = file("path/to/file.sh")
