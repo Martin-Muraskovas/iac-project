@@ -1,1 +1,3 @@
 variable.tf
+.terraform.lock.hcl
+.terraform/
