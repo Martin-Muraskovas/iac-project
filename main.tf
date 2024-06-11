@@ -112,7 +112,7 @@ resource "aws_security_group" "database_sg" {
 # Declaring the Launch Template for the Auto Scaling Group
 resource "aws_launch_template" "app-launch-template" {
   name_prefix   = "app-launch-template"
-  image_id      = "ami-0607a9783dd204cae"
+  image_id      = "ami-012673b275923ce27"
   instance_type = "t2.micro"
   key_name      = "martin-key"
   vpc_security_group_ids = [aws_security_group.app_sg.id]
@@ -155,11 +155,12 @@ resource "aws_autoscaling_group" "app-asg" {
 
 # Declaring the VM for the Database
 resource "aws_instance" "database-vm" {
-  ami           = "ami-0607a9783dd204cae"
+  ami           = "ami-01ca1671e7a1e25c7"
   instance_type = "t2.micro"
   subnet_id = aws_subnet.private_subnet.id
   security_groups = [aws_security_group.database_sg.id]
   key_name = "martin-key"
+  
   tags = {
     Name = "martin-database-vm"
   }
