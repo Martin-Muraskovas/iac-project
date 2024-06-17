@@ -1,45 +1,45 @@
 provider "aws" {
   region = "eu-west-1"
 }
-
+ 
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
   tags = {
     Name = "martin-vpc-2t-deploy"
   }
 }
-
+ 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
-
+ 
   tags = {
     Name = "martin-igw"
   }
 }
-
+ 
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.main.id
-
+ 
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
   }
-
+ 
   tags = {
     Name = "martin-public-rt"
   }
 }
-
+ 
 resource "aws_route_table_association" "public_rt_association1" {
   subnet_id      = aws_subnet.public1.id
   route_table_id = aws_route_table.public_rt.id
 }
-
+ 
 resource "aws_route_table_association" "public_rt_association2" {
   subnet_id      = aws_subnet.public2.id
   route_table_id = aws_route_table.public_rt.id
 }
-
+ 
 resource "aws_subnet" "public1" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
@@ -49,7 +49,7 @@ resource "aws_subnet" "public1" {
     Name = "martin-public-subnet-1"
   }
 }
-
+ 
 resource "aws_subnet" "public2" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.2.0/24"
@@ -59,7 +59,7 @@ resource "aws_subnet" "public2" {
     Name = "martin-public-subnet-2"
   }
 }
-
+ 
 resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.3.0/24"
@@ -68,79 +68,79 @@ resource "aws_subnet" "private" {
     Name = "martin-private-subnet"
   }
 }
-
+ 
 resource "aws_security_group" "app_sg" {
   vpc_id = aws_vpc.main.id
-
+ 
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+ 
   ingress {
     from_port   = 3000
     to_port     = 3000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+ 
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+ 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+ 
   tags = {
     Name = "app-sg"
   }
 }
-
+ 
 resource "aws_security_group" "db_sg" {
   vpc_id = aws_vpc.main.id
-
+ 
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+ 
   ingress {
     from_port   = 27017
     to_port     = 27017
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+ 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+ 
   tags = {
     Name = "db-sg"
   }
 }
-
+ 
 resource "aws_launch_configuration" "app" {
   name          = "app-launch-configuration"
   image_id      = "ami-012673b275923ce27"  # App AMI ID
   instance_type = "t2.micro"
   key_name      = "martin-key"
   security_groups = [aws_security_group.app_sg.id]
-
+ 
   user_data = <<-EOF
     #!/bin/bash
     cd /home/ubuntu/tech258-sparta-test-app/app
@@ -150,50 +150,103 @@ resource "aws_launch_configuration" "app" {
     cd ..
     node app.js &
   EOF
-
+ 
   lifecycle {
     create_before_destroy = true
   }
 }
-
+ 
 resource "aws_autoscaling_group" "app" {
   launch_configuration = aws_launch_configuration.app.id
   min_size             = 2
   max_size             = 3
   desired_capacity     = 2
   vpc_zone_identifier  = [aws_subnet.public1.id, aws_subnet.public2.id]
-
+ 
   tag {
     key                 = "Name"
     value               = "app-instance"
     propagate_at_launch = true
   }
-
+ 
   target_group_arns = [
     aws_lb_target_group.app_http.arn,
     aws_lb_target_group.app_ssh.arn
   ]
 }
 
+resource "aws_autoscaling_policy" "scale_out" {
+  name                   = "scale_out"
+  scaling_adjustment     = 1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 60
+  autoscaling_group_name = aws_autoscaling_group.app.name
+}
+
+resource "aws_autoscaling_policy" "scale_in" {
+  name                   = "scale_in"
+  scaling_adjustment     = -1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 60
+  autoscaling_group_name = aws_autoscaling_group.app.name
+}
+
+resource "aws_cloudwatch_metric_alarm" "high_cpu" {
+  alarm_name                = "high_cpu"
+  comparison_operator       = "GreaterThanOrEqualToThreshold"
+  evaluation_periods        = 2
+  metric_name               = "CPUUtilization"
+  namespace                 = "AWS/EC2"
+  period                    = 60
+  statistic                 = "Average"
+  threshold                 = 7
+  alarm_description         = "This metric monitors the CPU utilization"
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.app.name
+  }
+  alarm_actions             = [aws_autoscaling_policy.scale_out.arn]
+  ok_actions                = []
+  insufficient_data_actions = []
+}
+
+resource "aws_cloudwatch_metric_alarm" "low_cpu" {
+  alarm_name                = "low_cpu"
+  comparison_operator       = "LessThanOrEqualToThreshold"
+  evaluation_periods        = 2
+  metric_name               = "CPUUtilization"
+  namespace                 = "AWS/EC2"
+  period                    = 300
+  statistic                 = "Average"
+  threshold                 = 10
+  alarm_description         = "This metric monitors the CPU utilization"
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.app.name
+  }
+  alarm_actions             = [aws_autoscaling_policy.scale_in.arn]
+  ok_actions                = []
+  insufficient_data_actions = []
+}
+
+
 resource "aws_lb" "app" {
   name               = "app-load-balancer"
   internal           = false
   load_balancer_type = "network"
   subnets            = [aws_subnet.public1.id, aws_subnet.public2.id]
-
+ 
   enable_deletion_protection = false
-
+ 
   tags = {
     Name = "app-load-balancer"
   }
 }
-
+ 
 resource "aws_lb_target_group" "app_http" {
   name     = "app-http-target-group"
   port     = 80
   protocol = "TCP"
   vpc_id   = aws_vpc.main.id
-
+ 
   health_check {
     interval            = 30
     protocol            = "HTTP"
@@ -202,18 +255,18 @@ resource "aws_lb_target_group" "app_http" {
     healthy_threshold   = 5
     unhealthy_threshold = 2
   }
-
+ 
   tags = {
     Name = "app-http-target-group"
   }
 }
-
+ 
 resource "aws_lb_target_group" "app_ssh" {
   name     = "app-ssh-target-group"
   port     = 22
   protocol = "TCP"
   vpc_id   = aws_vpc.main.id
-
+ 
   health_check {
     interval            = 30
     protocol            = "TCP"
@@ -221,12 +274,12 @@ resource "aws_lb_target_group" "app_ssh" {
     healthy_threshold   = 5
     unhealthy_threshold = 2
   }
-
+ 
   tags = {
     Name = "app-ssh-target-group"
   }
 }
-
+ 
 resource "aws_lb_listener" "app_http" {
   load_balancer_arn = aws_lb.app.arn
   port              = 80
@@ -235,12 +288,12 @@ resource "aws_lb_listener" "app_http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app_http.arn
   }
-
+ 
   tags = {
     Name = "app-http-listener"
   }
 }
-
+ 
 resource "aws_lb_listener" "app_ssh" {
   load_balancer_arn = aws_lb.app.arn
   port              = 22
@@ -249,12 +302,12 @@ resource "aws_lb_listener" "app_ssh" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app_ssh.arn
   }
-
+ 
   tags = {
     Name = "app-ssh-listener"
   }
 }
-
+ 
 resource "aws_instance" "db" {
   ami                         = "ami-01ca1671e7a1e25c7"  # Database AMI ID
   instance_type               = "t2.micro"
@@ -262,14 +315,14 @@ resource "aws_instance" "db" {
   subnet_id                   = aws_subnet.private.id
   vpc_security_group_ids      = [aws_security_group.db_sg.id]
   associate_public_ip_address = false
-
+ 
   #user_data = file("database-provision.sh")
-
+ 
   tags = {
     Name = "db-instance"
   }
 }
-
+ 
 terraform {
   backend "s3" {
     bucket = "martin-bucket"
@@ -277,3 +330,4 @@ terraform {
     region = "eu-west-1"
   }
 }
+ 
