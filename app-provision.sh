@@ -1,13 +1,5 @@
-# Pseudocode to run the app on nginx
+#!/bin/bash
 
-# Update and Upgrade packages
+cd tech258-sparta-test-app/app
 
-# Clone code from github repo
-
-# Navigate to app folder
-
-# Install dependencies - node.js, npm, nginx, pm2
-
-# Either npm start the app, or pm2 start the app
-
-# Potentially will need to manually seed the database using seed.js
+node app.js &
